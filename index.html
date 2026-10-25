@@ -12,10 +12,14 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="orb" role="button" tabindex="0" aria-label="Xenora : touche pour parler ou arrêter l’écoute"></canvas>
-<div id="state" aria-live="polite">En veille</div>
+<canvas id="orb" role="button" tabindex="0" aria-label="Xenora : touche la sphère pour parler ou arrêter l’écoute"></canvas>
+<h1 id="name">Xenora</h1>
+<div id="state" aria-live="polite">Touche pour parler</div>
 <div id="text" aria-live="polite"></div>
-<input id="q" type="text" hidden enterkeyhint="send" autocomplete="off" placeholder="écrire…" aria-label="Saisie texte">
+<div class="bar">
+  <input id="q" type="text" enterkeyhint="send" autocomplete="off" placeholder="Écrire à Xenora…" aria-label="Écrire à Xenora">
+  <button id="send" type="button" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+</div>
 <script src="script.js"></script>
 </body>
 </html>
