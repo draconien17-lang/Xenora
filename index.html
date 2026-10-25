@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Xenora">
+<title>Xenora</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="orb" role="button" tabindex="0" aria-label="Xenora : touche pour parler ou arrêter l’écoute"></canvas>
+<div id="state" aria-live="polite">En veille</div>
+<div id="text" aria-live="polite"></div>
+<input id="q" type="text" hidden enterkeyhint="send" autocomplete="off" placeholder="écrire…" aria-label="Saisie texte">
+<script src="script.js"></script>
+</body>
+</html>
