@@ -123,15 +123,42 @@ function pickVoice(){if(!('speechSynthesis' in window))return;
   const sc=v=>(v.name===savedV?500:0)+(/siri/i.test(v.name)?200:0)+(/premium|enhanced|am[eé]lior/i.test(v.name)?100:0)+(/am[eé]lie/i.test(v.name)?50:/audrey|aur[eé]lie|marie/i.test(v.name)?20:0);
   voices=speechSynthesis.getVoices().filter(v=>/^fr/i.test(v.lang)).sort((p,q)=>sc(q)-sc(p));voice=voices[0]||null}
 if('speechSynthesis' in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}
-function reply(a){
-  hist.push({role:'assistant',content:a});try{localStorage.setItem('xen_h',JSON.stringify(hist.slice(-20)))}catch(e){}setState('speak');type(a);
+const ELV={sarah:'EXAVITQu4vr4xnSDxMaL',rachel:'21m00Tcm4TlvDq8ikWAM',aria:'9BWtsMINqrJLrRacOk9x'};
+const LSg=k=>{try{return localStorage.getItem(k)||''}catch(e){return''}};
+const LSs=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}};
+const au=new Audio();au.playsInline=true;
+const SIL='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
+const unlockAudio=()=>{try{au.src=SIL;au.play().catch(()=>{})}catch(e){}};
+function sysSpeak(a){
   if(!('speechSynthesis' in window)){setTimeout(()=>{if(state==='speak')setState('idle')},a.length*50);return}
   speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(a);u.lang=CONFIG.LANG;if(voice)u.voice=voice;u.rate=.97;
   u.onend=u.onerror=()=>{if(state==='speak')setState('idle')};speechSynthesis.speak(u);
 }
+async function elSpeak(a){
+  const r=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+(ELV[LSg('xen_elv')]||ELV.sarah)+'?output_format=mp3_44100_64',{method:'POST',
+    headers:{'xi-api-key':LSg('xen_el'),'Content-Type':'application/json',Accept:'audio/mpeg'},
+    body:JSON.stringify({text:a.slice(0,600),model_id:'eleven_flash_v2_5',voice_settings:{stability:.45,similarity_boost:.8}})});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  au.src=URL.createObjectURL(await r.blob());au.onended=au.onerror=()=>{if(state==='speak')setState('idle')};await au.play();
+}
+function reply(a){
+  hist.push({role:'assistant',content:a});try{localStorage.setItem('xen_h',JSON.stringify(hist.slice(-20)))}catch(e){}
+  setState('speak');type(a);au.pause();
+  if(LSg('xen_el'))elSpeak(a).catch(e=>{stEl.textContent='Voix naturelle indisponible ('+e.message+')';sysSpeak(a)});else sysSpeak(a);
+}
+function voiceCmd(v){
+  const arg=v.replace(/^\/voix\s*/i,'').trim(),low=arg.toLowerCase();
+  inEl.value='';sendBtn.classList.remove('on');inEl.blur();unlockAudio();
+  if(!arg){txEl.textContent=LSg('xen_el')?'Voix naturelle activée ('+(LSg('xen_elv')||'sarah')+'). Écris /voix off pour la couper, ou /voix sarah, /voix rachel, /voix aria.':'Écris /voix suivi de ta clé ElevenLabs pour activer une voix naturelle.';return}
+  if(low==='off'){LSs('xen_el','');txEl.textContent='Voix naturelle désactivée.';return}
+  if(ELV[low]){LSs('xen_elv',low);txEl.textContent='Voix : '+low+'.';if(LSg('xen_el')){setState('speak');elSpeak('Bonjour, voici ma voix.').catch(e=>{setState('idle');txEl.textContent='Voix indisponible ('+e.message+').'})}return}
+  LSs('xen_el',arg);txEl.textContent='Clé enregistrée. Je teste ma nouvelle voix…';setState('speak');
+  elSpeak('Bonjour, je suis Xenora. Voici ma nouvelle voix.').catch(e=>{LSs('xen_el','');setState('idle');txEl.textContent='Clé refusée ou quota atteint ('+e.message+').'});
+}
 
 /* ---------- Interactions : tout passe par la sphère ---------- */
 function tap(){
+  au.pause();unlockAudio();
   if('speechSynthesis' in window){speechSynthesis.cancel();try{speechSynthesis.speak(new SpeechSynthesisUtterance(''))}catch(e){}}
   if(state==='listen'){stopListen();setState('idle');return}
   if(state==='think')return;
@@ -140,7 +167,7 @@ function tap(){
 cv.addEventListener('click',tap);
 cv.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tap()}});
 const sendBtn=$('send'),bar=document.querySelector('.bar');
-function submit(){const v=inEl.value.trim();if(!v||state==='think')return;inEl.value='';sendBtn.classList.remove('on');inEl.blur();if(state==='listen')stopListen();ask(v)}
+function submit(){const v=inEl.value.trim();if(!v||state==='think')return;if(/^\/voix(\s|$)/i.test(v)){voiceCmd(v);return}inEl.value='';sendBtn.classList.remove('on');inEl.blur();if(state==='listen')stopListen();ask(v)}
 inEl.addEventListener('keydown',e=>{if(e.key==='Enter')submit()});
 inEl.addEventListener('input',()=>sendBtn.classList.toggle('on',!!inEl.value.trim()));
 sendBtn.addEventListener('click',submit);
