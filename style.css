@@ -6,9 +6,11 @@ body{color:#fff;font-family:-apple-system,"SF Pro Display","SF Pro Text","Helvet
 #name{position:fixed;top:calc(env(safe-area-inset-top,0px) + 18px);left:0;right:0;margin:0;text-align:center;font-size:26px;font-weight:200;letter-spacing:.14em;color:#fff;pointer-events:none}
 #state{position:fixed;top:63%;left:0;right:0;text-align:center;font-size:15px;font-weight:300;letter-spacing:.02em;color:rgba(255,255,255,.5)}
 #text{position:fixed;left:0;right:0;top:68%;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);overflow:auto;padding:0 9vw;text-align:center;font-size:clamp(17px,4.6vw,24px);font-weight:200;line-height:1.4;color:rgba(255,255,255,.92);-webkit-user-select:text;user-select:text}
-.bar{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;align-items:center;gap:8px;padding:6px 6px 6px 20px;border-radius:28px;background:rgba(12,12,14,.6);border:1px solid rgba(255,255,255,.12);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.bar{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;align-items:center;gap:8px;padding:6px 6px 6px 8px;border-radius:28px;background:rgba(12,12,14,.6);border:1px solid rgba(255,255,255,.12);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
 .bar input{flex:1;min-width:0;background:none;border:0;outline:0;color:#fff;font:300 16px/1.2 inherit;font-family:inherit;-webkit-user-select:text;user-select:text}
 .bar input::placeholder{color:rgba(255,255,255,.4)}
+#cam{flex:none;width:36px;height:36px;border-radius:50%;border:0;display:grid;place-items:center;background:none;color:rgba(255,255,255,.6)}
+#cam svg{width:22px;height:22px}
 #send{flex:none;width:36px;height:36px;border-radius:50%;border:0;display:grid;place-items:center;background:rgba(255,255,255,.1);color:rgba(255,255,255,.55);transition:background .2s,color .2s}
 #send.on{background:rgba(255,255,255,.9);color:#000}
 #send svg{width:18px;height:18px}

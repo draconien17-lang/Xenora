@@ -156,6 +156,29 @@ function voiceCmd(v){
   elSpeak('Bonjour, je suis Xenora. Voici ma nouvelle voix.').catch(e=>{LSs('xen_el','');setState('idle');txEl.textContent='Clé refusée ou quota atteint ('+e.message+').'});
 }
 
+/* ---------- Analyse d’image (photo) ---------- */
+function shrink(file,max){return new Promise((ok,ko)=>{const u=URL.createObjectURL(file),im=new Image();
+  im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',.8))};
+  im.onerror=()=>ko(new Error('image illisible'));im.src=u})}
+async function look(file){
+  if(state==='think')return;
+  const q=inEl.value.trim();inEl.value='';sendBtn.classList.remove('on');
+  setState('think','Je regarde ta photo…');
+  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),45000);
+  try{
+    const url=await shrink(file,1024);
+    const r=await fetch(CONFIG.FREE_LLM+'/openai',{method:'POST',headers:{'Content-Type':'application/json'},signal:ctl.signal,
+      body:JSON.stringify({model:'openai',messages:[{role:'system',content:SYS+' Tu peux voir les images : décris ce que tu vois de façon claire et utile.'},
+        {role:'user',content:[{type:'text',text:q||'Décris cette photo.'},{type:'image_url',image_url:{url}}]}]})});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json(),a=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||'').replace(/[*_#`]/g,'').trim();
+    if(!a)throw new Error('réponse vide');
+    hist.push({role:'user',content:'[Photo] '+(q||'Décris cette photo.')});reply(a);
+  }catch(e){fail(e.name==='AbortError'?'Délai dépassé pour l’analyse de la photo.':'Analyse de la photo impossible ('+e.message+').')}
+  finally{clearTimeout(to)}
+}
+
 /* ---------- Interactions : tout passe par la sphère ---------- */
 function tap(){
   au.pause();unlockAudio();
@@ -171,6 +194,8 @@ function submit(){const v=inEl.value.trim();if(!v||state==='think')return;if(/^\
 inEl.addEventListener('keydown',e=>{if(e.key==='Enter')submit()});
 inEl.addEventListener('input',()=>sendBtn.classList.toggle('on',!!inEl.value.trim()));
 sendBtn.addEventListener('click',submit);
+$('cam').addEventListener('click',()=>{unlockAudio();$('file').click()});
+$('file').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(f)look(f)});
 if(window.visualViewport){const vv=visualViewport,f=()=>{bar.style.transform='translateY('+(-Math.max(0,innerHeight-vv.height-vv.offsetTop))+'px)'};vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopListen();if('speechSynthesis' in window)speechSynthesis.cancel();if(state==='listen'||state==='speak')setState('idle')}});
 stEl.style.pointerEvents='auto';
