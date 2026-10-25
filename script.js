@@ -118,8 +118,10 @@ async function ask(q){
 }
 
 /* ---------- Réponse + voix (Amélie si installée) ---------- */
-function pickVoice(){if(!('speechSynthesis' in window))return;const f=speechSynthesis.getVoices().filter(v=>/^fr/i.test(v.lang));
-  voice=f.find(v=>/am[eé]lie/i.test(v.name))||f.find(v=>/audrey|aur[eé]lie|marie/i.test(v.name))||f[0]||null}
+let voices=[],vi=0;const savedV=(()=>{try{return localStorage.getItem('xen_v')||''}catch(e){return''}})();
+function pickVoice(){if(!('speechSynthesis' in window))return;
+  const sc=v=>(v.name===savedV?500:0)+(/siri/i.test(v.name)?200:0)+(/premium|enhanced|am[eé]lior/i.test(v.name)?100:0)+(/am[eé]lie/i.test(v.name)?50:/audrey|aur[eé]lie|marie/i.test(v.name)?20:0);
+  voices=speechSynthesis.getVoices().filter(v=>/^fr/i.test(v.lang)).sort((p,q)=>sc(q)-sc(p));voice=voices[0]||null}
 if('speechSynthesis' in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}
 function reply(a){
   hist.push({role:'assistant',content:a});try{localStorage.setItem('xen_h',JSON.stringify(hist.slice(-20)))}catch(e){}setState('speak');type(a);
@@ -139,6 +141,12 @@ cv.addEventListener('click',tap);
 cv.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tap()}});
 inEl.addEventListener('keydown',e=>{if(e.key==='Enter'&&inEl.value.trim()){const v=inEl.value.trim();inEl.value='';inEl.blur();if(state==='listen')stopListen();ask(v)}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopListen();if('speechSynthesis' in window)speechSynthesis.cancel();if(state==='listen'||state==='speak')setState('idle')}});
+stEl.style.pointerEvents='auto';
+stEl.addEventListener('click',()=>{
+  if(state!=='idle'||!voices.length||!('speechSynthesis' in window))return;
+  vi=(vi+1)%voices.length;voice=voices[vi];try{localStorage.setItem('xen_v',voice.name)}catch(e){}
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('Bonjour, voici ma voix.');u.lang=CONFIG.LANG;u.voice=voice;speechSynthesis.speak(u);
+  txEl.textContent='Voix : '+voice.name+' ('+(vi+1)+'/'+voices.length+')'});
 if(!SR)showInput();
 
 /* ---------- Rendu de la sphère (Canvas 2D) ---------- */
