@@ -15,13 +15,16 @@
 html,body{margin:0;width:100%;height:100vh;height:100dvh;overflow:hidden;background:#000;overscroll-behavior:none}
 body{color:#fff;font-family:-apple-system,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;-webkit-user-select:none;user-select:none}
 #orb{position:fixed;inset:0;width:100%;height:100%;outline:none;touch-action:manipulation;cursor:pointer}
-#name{position:fixed;top:calc(env(safe-area-inset-top,0px) + 18px);left:0;right:0;margin:0;text-align:center;font-size:26px;font-weight:200;letter-spacing:.14em;color:#fff;pointer-events:none}
-#state{position:fixed;top:63%;left:0;right:0;text-align:center;font-size:15px;font-weight:300;letter-spacing:.02em;color:rgba(255,255,255,.5)}
-#text{position:fixed;left:0;right:0;top:68%;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);overflow:auto;padding:0 9vw;text-align:center;font-size:clamp(17px,4.6vw,24px);font-weight:200;line-height:1.4;color:rgba(255,255,255,.92);-webkit-user-select:text;user-select:text}
+#name{position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);left:0;right:0;margin:0;text-align:center;font-size:30px;font-weight:300;letter-spacing:.01em;color:#fff;pointer-events:none}
+#state{position:fixed;top:58%;left:0;right:0;text-align:center;font-size:17px;font-weight:300;color:rgba(255,255,255,.55)}
+#mic{position:fixed;left:50%;top:calc(66% - 29px);width:58px;height:58px;margin-left:-29px;border-radius:50%;display:grid;place-items:center;color:#fff;border:2px solid transparent;background:linear-gradient(#0b0b12,#0b0b12) padding-box,linear-gradient(135deg,#3b82ff,#a855f7,#ff5cc8) border-box;box-shadow:0 0 18px rgba(90,110,255,.45);transition:box-shadow .3s,transform .3s}
+#mic svg{width:24px;height:24px}
+body[data-s=listen] #mic{box-shadow:0 0 30px rgba(120,120,255,.9);transform:scale(1.08)}
+#text{position:fixed;left:0;right:0;top:73%;bottom:calc(env(safe-area-inset-bottom,0px) + 80px);overflow:auto;padding:0 9vw;text-align:center;font-size:clamp(17px,4.6vw,24px);font-weight:200;line-height:1.4;color:rgba(255,255,255,.92);-webkit-user-select:text;user-select:text}
 .bar{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;align-items:center;gap:8px;padding:6px 6px 6px 8px;border-radius:28px;background:rgba(12,12,14,.6);border:1px solid rgba(255,255,255,.12);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
 .bar input{flex:1;min-width:0;background:none;border:0;outline:0;color:#fff;font:300 16px/1.2 inherit;font-family:inherit;-webkit-user-select:text;user-select:text}
 .bar input::placeholder{color:rgba(255,255,255,.4)}
-#cam{flex:none;width:36px;height:36px;border-radius:50%;border:0;display:grid;place-items:center;background:none;color:rgba(255,255,255,.6)}
+#cam{flex:none;width:36px;height:36px;border-radius:50%;border:0;display:grid;place-items:center;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85)}
 #cam svg{width:22px;height:22px}
 #send{flex:none;width:36px;height:36px;border-radius:50%;border:0;display:grid;place-items:center;background:rgba(255,255,255,.1);color:rgba(255,255,255,.55);transition:background .2s,color .2s}
 #send.on{background:rgba(255,255,255,.9);color:#000}
@@ -32,6 +35,7 @@ body{color:#fff;font-family:-apple-system,"SF Pro Display","SF Pro Text","Helvet
 <canvas id="orb" role="button" tabindex="0" aria-label="Xenora : touche la sphère pour parler ou arrêter l’écoute"></canvas>
 <h1 id="name">Xenora</h1>
 <div id="state" aria-live="polite">Touche pour parler</div>
+<button id="mic" type="button" aria-label="Parler à Xenora"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
 <div id="text" aria-live="polite"></div>
 <div class="bar">
   <button id="cam" type="button" aria-label="Photo : appareil ou galerie"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
@@ -45,13 +49,13 @@ body{color:#fff;font-family:-apple-system,"SF Pro Display","SF Pro Text","Helvet
 const CONFIG={ENDPOINT:'',FREE_LLM:'https://text.pollinations.ai',TIMEOUT:25000,LANG:'fr-FR'};
 
 const $=id=>document.getElementById(id);
-const cv=$('orb'),x=cv.getContext('2d'),stEl=$('state'),txEl=$('text'),inEl=$('q');
+const cv=$('orb'),stEl=$('state'),txEl=$('text'),inEl=$('q');
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const LABEL={idle:'Touche pour parler',listen:'Je t’écoute…',think:'Je réfléchis…',speak:'Je réponds…',error:'Un souci'};
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let state='idle',lv=0,ph=0,last=0,W=0,H=0,stream=null,ac=null,an=null,buf=null,rec=null,hist=[],voice=null,ty,et;
 
-function setState(s,msg){state=s;stEl.textContent=LABEL[s];if(msg!==undefined)txEl.textContent=msg}
+function setState(s,msg){state=s;document.body.dataset.s=s;stEl.textContent=LABEL[s];if(msg!==undefined)txEl.textContent=msg}
 function type(m){clearInterval(ty);let i=0;txEl.textContent='';ty=setInterval(()=>{txEl.textContent=m.slice(0,++i);if(i>=m.length)clearInterval(ty)},reduce?0:22)}
 function showInput(){inEl.hidden=false}
 function fail(msg){stopListen();setState('error',msg);clearTimeout(et);et=setTimeout(()=>{if(state==='error')setState('idle')},6000)}
@@ -205,18 +209,22 @@ function shrink(file,max){return new Promise((ok,ko)=>{const u=URL.createObjectU
   im.onerror=()=>ko(new Error('image illisible'));im.src=u})}
 async function look(file){
   if(state==='think')return;
-  const q=inEl.value.trim();inEl.value='';sendBtn.classList.remove('on');
+  const q=inEl.value.trim(),ask1=q||'Décris cette photo.';inEl.value='';sendBtn.classList.remove('on');
   setState('think','Je regarde ta photo…');
-  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),45000);
+  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),60000);
+  const tries=[['openai',768],['openai-large',768],['openai',512]];let err='';
   try{
-    const url=await shrink(file,1024);
-    const r=await fetch(CONFIG.FREE_LLM+'/openai',{method:'POST',headers:{'Content-Type':'application/json'},signal:ctl.signal,
-      body:JSON.stringify({model:'openai',messages:[{role:'system',content:SYS+' Tu peux voir les images : décris ce que tu vois de façon claire et utile.'},
-        {role:'user',content:[{type:'text',text:q||'Décris cette photo.'},{type:'image_url',image_url:{url}}]}]})});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const d=await r.json(),a=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||'').replace(/[*_#`]/g,'').trim();
-    if(!a)throw new Error('réponse vide');
-    hist.push({role:'user',content:'[Photo] '+(q||'Décris cette photo.')});reply(a);
+    for(const t of tries){
+      const url=await shrink(file,t[1]);
+      const r=await fetch(CONFIG.FREE_LLM+'/openai',{method:'POST',headers:{'Content-Type':'application/json'},signal:ctl.signal,
+        body:JSON.stringify({model:t[0],messages:[{role:'user',content:[{type:'text',text:'Tu es Xenora, une assistante vocale. Réponds en français, en 2 à 4 phrases courtes, sans markdown ni emoji. '+ask1},{type:'image_url',image_url:{url}}]}]})});
+      if(r.ok){
+        const d=await r.json(),a=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||'').replace(/[*_#`]/g,'').trim();
+        if(a){hist.push({role:'user',content:'[Photo] '+ask1});reply(a);return}
+        err='réponse vide';continue}
+      err='HTTP '+r.status+' '+((await r.text().catch(()=>''))+'').replace(/\s+/g,' ').slice(0,140);
+    }
+    throw new Error(err);
   }catch(e){fail(e.name==='AbortError'?'Délai dépassé pour l’analyse de la photo.':'Analyse de la photo impossible ('+e.message+').')}
   finally{clearTimeout(to)}
 }
@@ -229,7 +237,7 @@ function tap(){
   if(state==='think')return;
   clearTimeout(et);startListen();
 }
-cv.addEventListener('click',tap);
+cv.addEventListener('click',tap);$('mic').addEventListener('click',tap);
 cv.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tap()}});
 const sendBtn=$('send'),bar=document.querySelector('.bar');
 function submit(){const v=inEl.value.trim();if(!v||state==='think')return;if(/^\/voix(\s|$)/i.test(v)){voiceCmd(v);return}inEl.value='';sendBtn.classList.remove('on');inEl.blur();if(state==='listen')stopListen();ask(v)}
@@ -248,47 +256,84 @@ stEl.addEventListener('click',()=>{
   txEl.textContent='Voix : '+voice.name+' ('+(vi+1)+'/'+voices.length+')'});
 if(!SR)showInput();
 
-/* ---------- Rendu : sphère Liquid Glass (Canvas 2D) ---------- */
+/* ---------- Rendu : sphère Liquid Glass (WebGL) ---------- */
 const D=Math.min(devicePixelRatio||1,2);
-function resize(){W=innerWidth;H=innerHeight;cv.width=W*D;cv.height=H*D;x.setTransform(D,0,0,D,0,0)}
+const FS=`precision highp float;
+uniform vec3 C;uniform float T;uniform float L;uniform float E;
+float hs(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float ns(vec2 p){vec2 i=floor(p);vec2 f=fract(p);f=f*f*(3.0-2.0*f);
+  return mix(mix(hs(i),hs(i+vec2(1.0,0.0)),f.x),mix(hs(i+vec2(0.0,1.0)),hs(i+vec2(1.0,1.0)),f.x),f.y);}
+void main(){
+  vec2 p=(gl_FragCoord.xy-C.xy)/C.z;
+  float r0=length(p);
+  if(r0>2.6){gl_FragColor=vec4(0.0,0.0,0.0,1.0);return;}
+  float a=atan(p.y,p.x);
+  float wob=1.0+(0.012+L*0.07)*sin(3.0*a+T*1.6)+(0.008+L*0.04)*sin(5.0*a-T*1.2);
+  float d=r0/wob;
+  vec3 blue=mix(vec3(0.05,0.32,1.0),vec3(1.0,0.45,0.12),E);
+  vec3 vio=mix(vec3(0.62,0.28,1.0),vec3(1.0,0.25,0.25),E);
+  vec3 pink=mix(vec3(1.0,0.38,0.82),vec3(1.0,0.6,0.5),E);
+  vec3 cya=mix(vec3(0.25,0.82,1.0),vec3(1.0,0.75,0.4),E);
+  float gw=(exp(-max(d-1.0,0.0)*6.0)*(0.75+L*0.6)+exp(-max(d-1.0,0.0)*2.2)*0.28)*smoothstep(0.55,1.0,d);
+  vec3 col=blue*gw*0.9;
+  if(d<1.012){
+    float z=sqrt(max(1.0-d*d,0.0));
+    vec2 nrm=p/wob;
+    float fr=pow(1.0-z,2.4);
+    vec2 q=nrm*(0.55+0.45*z);
+    q+=0.16*vec2(ns(q*2.2+vec2(T*0.12,0.0))-0.5,ns(q*2.2+vec2(5.0,-T*0.1))-0.5)*(1.0+L*2.5);
+    q+=nrm*0.12;
+    float cvy=0.34*sin(q.x*2.7+T*0.25)+0.12*q.x;
+    float dy=q.y-cvy;
+    float e1=exp(-pow(abs(dy)*7.0,1.4));
+    float e2=exp(-abs(dy-0.11)*20.0)*0.55;
+    float e3=exp(-abs(dy+0.13)*16.0)*0.4;
+    float lobe=exp(-abs(length(q-vec2(0.05,0.34*sign(dy)))-0.62)*14.0)*0.35;
+    vec3 base=mix(vec3(0.01,0.04,0.30),vec3(0.03,0.16,0.70),smoothstep(-0.8,0.9,q.y+0.2*q.x));
+    float sheen=exp(-abs(dy)*2.6)*0.35;
+    vec3 ic=base+cya*sheen*0.55+vec3(0.6,0.8,1.0)*(e1*0.55+e2*0.5+e3*0.35)+vio*lobe;
+    float ang1=0.5+0.5*cos(a-2.3+T*0.15);
+    float ang2=0.5+0.5*cos(a+0.9-T*0.12);
+    vec3 rimc=mix(blue,cya,0.25);
+    rimc=mix(rimc,vio,smoothstep(0.55,1.0,ang1));
+    rimc=mix(rimc,pink,smoothstep(0.75,1.0,ang2)*0.8);
+    ic=ic*(1.0-0.35*fr)+rimc*pow(fr,1.6)*1.9;
+    ic+=pink*pow(fr,3.0)*smoothstep(0.6,1.0,ang1)*0.9+vio*pow(fr,2.0)*smoothstep(0.6,1.0,ang2)*0.8;
+    float edg=smoothstep(0.93,0.995,d)*(1.0-smoothstep(0.995,1.012,d));
+    ic+=vec3(0.75,0.88,1.0)*edg*1.4;
+    vec3 nn=normalize(vec3(nrm,z));
+    ic+=vec3(1.0)*pow(max(dot(nn,normalize(vec3(-0.45,0.55,0.7))),0.0),36.0)*0.7;
+    ic+=cya*pow(max(dot(nn,normalize(vec3(0.5,-0.55,0.65))),0.0),60.0)*0.6;
+    col=mix(col,ic,1.0-smoothstep(0.998,1.012,d));
+  }
+  col=1.0-exp(-col*1.25);
+  gl_FragColor=vec4(col,1.0);
+}`;
+const gl=cv.getContext('webgl',{antialias:false,alpha:false})||cv.getContext('experimental-webgl');
+let uC,uT,uL,uE,glOK=false;
+if(gl){
+  const mk=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o};
+  const fs=mk(gl.FRAGMENT_SHADER,FS),pr=gl.createProgram();
+  gl.attachShader(pr,mk(gl.VERTEX_SHADER,'attribute vec2 a;void main(){gl_Position=vec4(a,0.0,1.0);}'));gl.attachShader(pr,fs);gl.linkProgram(pr);
+  if(gl.getProgramParameter(pr,gl.LINK_STATUS)){
+    gl.useProgram(pr);gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+    const al=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+    uC=gl.getUniformLocation(pr,'C');uT=gl.getUniformLocation(pr,'T');uL=gl.getUniformLocation(pr,'L');uE=gl.getUniformLocation(pr,'E');glOK=true;
+  }else txEl.textContent='Rendu de la sphère indisponible : '+(gl.getShaderInfoLog(fs)||'erreur').slice(0,160);
+}else txEl.textContent='Rendu 3D (WebGL) indisponible sur ce navigateur.';
+function resize(){W=innerWidth;H=innerHeight;cv.width=Math.round(W*D);cv.height=Math.round(H*D);if(gl)gl.viewport(0,0,cv.width,cv.height)}
 addEventListener('resize',resize);addEventListener('orientationchange',resize);resize();
-const PAL=['40,120,255','150,90,255','0,225,255','255,120,215','90,150,255'];
-const ERRP=['255,150,60','255,80,80','255,120,150','255,200,160','255,110,70'];
 function frame(ms){
   const dt=Math.min((ms-last)/1000||.016,.05);last=ms;
   ph+=dt*(reduce?.25:state==='think'?.7:state==='listen'?1.1:state==='speak'?1.3:.55);
   const tg=state==='listen'?.12+level()*.8:state==='speak'?.35+.25*Math.sin(ph*5)*Math.sin(ph*1.7):state==='think'?.1:state==='error'?.12:.05+.03*Math.sin(ph);
   lv+=(tg-lv)*.16;
-  const pulse=state==='listen'&&!reduce?1+.025*Math.sin(ph*2.4):1,k=reduce?0:1,P=state==='error'?ERRP:PAL;
-  const cx=W/2,cy=H*.4+(reduce?0:Math.sin(ph*.45)*4),R=Math.min(W*.34,H*.17)*(1+lv*.08)*pulse;
-  x.clearRect(0,0,W,H);
-  let g=x.createRadialGradient(cx,cy,R*.85,cx,cy,R*2.1);
-  g.addColorStop(0,`rgba(${P[1]},${.26+lv*.22})`);g.addColorStop(.5,`rgba(${P[0]},.08)`);g.addColorStop(1,'rgba(0,0,0,0)');
-  x.fillStyle=g;x.fillRect(0,0,W,H);
-  const path=()=>{x.beginPath();for(let i=0;i<=90;i++){const a=i/90*6.2832,r=R*(1+k*((.015+lv*.09)*Math.sin(3*a+ph*1.8)+(.01+lv*.05)*Math.sin(5*a-ph*1.3)));
-    i?x.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r):x.moveTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r)}x.closePath()};
-  path();g=x.createRadialGradient(cx-R*.2,cy-R*.25,R*.1,cx,cy,R);g.addColorStop(0,'rgba(14,20,48,.95)');g.addColorStop(1,'rgba(4,6,20,.95)');x.fillStyle=g;x.fill();
-  x.save();x.clip();x.globalCompositeOperation='lighter';
-  for(let i=0;i<5;i++){
-    const a=ph*(.35+i*.11)+i*1.26,dist=R*(.5+.08*Math.sin(ph*.7+i)),bx=cx+Math.cos(a)*dist,by=cy+Math.sin(a*1.07)*dist,rad=R*(.5+.05*i);
-    g=x.createRadialGradient(bx,by,0,bx,by,rad);g.addColorStop(0,`rgba(${P[i]},.6)`);g.addColorStop(1,`rgba(${P[i]},0)`);
-    x.fillStyle=g;x.fillRect(cx-R*1.2,cy-R*1.2,R*2.4,R*2.4)}
-  g=x.createRadialGradient(cx+R*.35,cy+R*.55,0,cx+R*.35,cy+R*.55,R*.7);g.addColorStop(0,`rgba(${P[2]},.4)`);g.addColorStop(1,`rgba(${P[2]},0)`);
-  x.fillStyle=g;x.fillRect(cx-R,cy-R,R*2,R*2);
-  x.globalCompositeOperation='source-over';
-  g=x.createRadialGradient(cx,cy,R*.7,cx,cy,R*1.02);g.addColorStop(0,'rgba(170,200,255,0)');g.addColorStop(1,'rgba(170,200,255,.3)');
-  x.fillStyle=g;x.fillRect(cx-R*1.2,cy-R*1.2,R*2.4,R*2.4);
-  x.restore();
-  let rim;
-  if(x.createConicGradient){rim=x.createConicGradient(ph*.5,cx,cy);[0,1,2,3,4,0].forEach((c,i)=>rim.addColorStop(i/5,`rgba(${P[c]},.95)`))}
-  else{rim=x.createLinearGradient(cx-R,cy-R,cx+R,cy+R);rim.addColorStop(0,`rgba(${P[2]},.9)`);rim.addColorStop(.5,`rgba(${P[1]},.9)`);rim.addColorStop(1,`rgba(${P[3]},.9)`)}
-  path();x.strokeStyle=rim;x.lineWidth=R*.05;x.shadowColor=`rgba(${P[1]},.9)`;x.shadowBlur=18;x.stroke();x.shadowBlur=0;
-  path();x.strokeStyle='rgba(255,255,255,.5)';x.lineWidth=1;x.stroke();
-  x.save();x.translate(cx,cy);x.scale(.93,.93);x.translate(-cx,-cy);path();x.strokeStyle='rgba(255,255,255,.12)';x.lineWidth=1;x.stroke();x.restore();
-  x.lineCap='round';x.beginPath();x.arc(cx,cy,R*.9,3.5,4.45);x.strokeStyle='rgba(255,255,255,.7)';x.lineWidth=R*.035;x.shadowColor='#fff';x.shadowBlur=8;x.stroke();x.shadowBlur=0;
-  x.save();x.translate(cx-R*.3,cy-R*.52);x.rotate(-.5);x.scale(1,.5);
-  g=x.createRadialGradient(0,0,0,0,0,R*.38);g.addColorStop(0,'rgba(255,255,255,.32)');g.addColorStop(1,'rgba(255,255,255,0)');
-  x.fillStyle=g;x.beginPath();x.arc(0,0,R*.38,0,6.2832);x.fill();x.restore();
+  if(glOK){
+    const pulse=state==='listen'&&!reduce?1+.025*Math.sin(ph*2.4):1,cy=H*.37+(reduce?0:Math.sin(ph*.45)*4),R=Math.min(W*.265,H*.14)*(1+lv*.05)*pulse;
+    gl.uniform3f(uC,W/2*D,(H-cy)*D,R*D);gl.uniform1f(uT,ph);gl.uniform1f(uL,reduce?lv*.3:lv);gl.uniform1f(uE,state==='error'?1:0);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
