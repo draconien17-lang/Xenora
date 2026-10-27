@@ -19,6 +19,7 @@ body{color:#fff;font-family:-apple-system,"SF Pro Display","SF Pro Text","Helvet
 #state{position:fixed;top:62%;left:0;right:0;text-align:center;font-size:17px;font-weight:300;color:rgba(255,255,255,.55)}
 #mic{position:fixed;left:50%;top:calc(71% - 29px);width:58px;height:58px;margin-left:-29px;border-radius:50%;display:grid;place-items:center;color:#fff;border:2px solid transparent;background:linear-gradient(#0b0b12,#0b0b12) padding-box,linear-gradient(135deg,#3b82ff,#a855f7,#ff5cc8) border-box;box-shadow:0 0 18px rgba(90,110,255,.45);transition:box-shadow .3s,transform .3s}
 #mic svg{width:24px;height:24px}
+body[data-hf="1"] #mic{box-shadow:0 0 24px rgba(70,255,200,.8),0 0 16px rgba(90,110,255,.45)}
 body[data-s=listen] #mic{box-shadow:0 0 30px rgba(120,120,255,.9);transform:scale(1.08)}
 #text{position:fixed;left:0;right:0;top:77%;bottom:calc(env(safe-area-inset-bottom,0px) + 80px);overflow:auto;padding:0 9vw;text-align:center;font-size:clamp(17px,4.6vw,24px);font-weight:200;line-height:1.4;color:rgba(255,255,255,.92);-webkit-user-select:text;user-select:text}
 .bar{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;align-items:center;gap:8px;padding:6px 6px 6px 8px;border-radius:28px;background:rgba(12,12,14,.6);border:1px solid rgba(255,255,255,.22);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
@@ -53,7 +54,7 @@ const cv=$('orb'),stEl=$('state'),txEl=$('text'),inEl=$('q');
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const LABEL={idle:'Touche pour parler',listen:'Je t’écoute…',think:'Je réfléchis…',speak:'Je réponds…',error:'Un souci'};
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-let state='idle',lv=0,ph=0,last=0,W=0,H=0,stream=null,ac=null,an=null,buf=null,rec=null,hist=[],voice=null,ty,et;
+let quiet=false,state='idle',lv=0,ph=0,last=0,W=0,H=0,stream=null,ac=null,an=null,buf=null,rec=null,hist=[],voice=null,ty,et;
 
 function setState(s,msg){state=s;document.body.dataset.s=s;stEl.textContent=LABEL[s];if(msg!==undefined)txEl.textContent=msg}
 function type(m){clearInterval(ty);let i=0;txEl.textContent='';ty=setInterval(()=>{txEl.textContent=m.slice(0,++i);if(i>=m.length)clearInterval(ty)},reduce?0:22)}
@@ -83,6 +84,7 @@ function micMsg(e){
 
 /* ---------- Écoute + reconnaissance vocale ---------- */
 async function startListen(){
+  if(state==='listen')return;
   if(!window.isSecureContext){fail('Le micro exige HTTPS. Ouvre cette page depuis une adresse https://.');return}
   try{await startMic()}catch(e){fail(micMsg(e));return}
   setState('listen','');
@@ -97,13 +99,14 @@ function startRec(){
     if(e.error==='no-speech')txEl.textContent='Je n’ai rien entendu. Touche la sphère pour réessayer.';
     else if(e.error==='not-allowed'||e.error==='service-not-allowed'){fail('Reconnaissance vocale refusée. Réglages ▸ Safari ▸ Micro et Reconnaissance vocale.');showInput()}
     else if(e.error!=='aborted'){fail('Reconnaissance vocale : '+e.error+'. Tu peux écrire ta demande.');showInput()}};
-  r.onend=()=>{if(rec!==r)return;rec=null;const q=fin.trim();if(state!=='listen')return;stopListen();if(q)ask(q);else setState('idle')};
+  r.onend=()=>{if(rec!==r)return;rec=null;const q=fin.trim();if(state!=='listen')return;stopListen();
+    if(q){silences=0;ask(q)}else{setState('idle');if(handsFree){if(++silences>=3){toggleHF(false);txEl.textContent='Mains libres coupé : je n’entends rien.'}else setTimeout(startListen,500)}}};
   try{r.start()}catch(e){fail('Reconnaissance vocale indisponible.');showInput()}
 }
 function stopListen(){if(rec){const r=rec;rec=null;r.onend=null;try{r.abort()}catch(e){}}stopMic()}
 
 /* ---------- Réponses : services gratuits sans clé, appelés depuis l’iPhone ---------- */
-const SYS='Tu es Xenora, une IA vocale futuriste à la voix de femme, chaleureuse, curieuse et intelligente. Tu réfléchis, tu donnes ton avis, tu relances si utile. Réponds en français, en 2 à 4 phrases courtes, sans markdown ni emoji, faites pour être lues à voix haute. La météo, la date, l’heure et Wikipédia sont gérés par l’application ; si tu ne sais pas quelque chose, dis-le franchement sans inventer.';
+const SYS='Tu es Xenora, une IA vocale futuriste à la voix de femme, chaleureuse, curieuse et intelligente. Tu réfléchis, tu donnes ton avis, tu relances si utile. Réponds en français en 3 à 5 phrases claires et précises, sans markdown ni emoji, faites pour être lues à voix haute. Si on te demande de développer ou de détailler, réponds plus longuement (6 à 10 phrases). La météo, la date, l’heure et Wikipédia sont gérés par l’application ; si tu ne sais pas quelque chose, dis-le franchement sans inventer.';
 try{hist=JSON.parse(localStorage.getItem('xen_h')||'[]')}catch(e){}
 const WMO={0:'ciel dégagé',1:'plutôt dégagé',2:'partiellement nuageux',3:'couvert',45:'brouillard',48:'brouillard givrant',51:'bruine légère',53:'bruine',55:'bruine forte',61:'pluie faible',63:'pluie',65:'forte pluie',71:'neige faible',73:'neige',75:'forte neige',80:'averses',81:'averses',82:'fortes averses',95:'orage',96:'orage avec grêle',99:'orage avec grêle'};
 const J=async u=>{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()};
@@ -127,14 +130,15 @@ async function wiki(q){
   const r=await J('https://fr.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=1&srsearch='+encodeURIComponent(sub));
   const hit=r.query&&r.query.search&&r.query.search[0];if(!hit)return null;
   const p=await J('https://fr.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(hit.title));
-  return p.extract?p.extract.split(/(?<=[.!?])\s+/).slice(0,2).join(' '):null;
+  return p.extract?p.extract.split(/(?<=[.!?])\s+/).slice(0,3).join(' '):null;
 }
 async function route(q){
+  const act=actions(q);if(act)return act;
   const n=new Date();
-  if(/m[ée]t[ée]o|quel temps|pleuvoir|il pleut|il fait (chaud|froid|beau)/i.test(q))return meteo(q);
+  if(/m[ée]t[ée]o|quel temps|pleuvoir|il pleut|il fait (chaud|froid|beau)/i.test(q)){quiet=true;stEl.textContent='Je cherche…';return meteo(q)}
   if(/quelle heure|l[’']heure/i.test(q))return'Il est '+n.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+'.';
   if(/quel jour|la date|quelle date/i.test(q))return'Nous sommes le '+n.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';
-  if(/^(qui (est|était)|c[’']est quoi|qu[’']est-ce (que|qu)|parle-moi d|explique-moi)/i.test(q)){try{return await wiki(q)}catch(e){return null}}
+  if(/^(qui (est|était)|c[’']est quoi|qu[’']est-ce (que|qu)|parle-moi d|explique-moi)/i.test(q)){quiet=true;stEl.textContent='Je cherche…';try{return await wiki(q)}catch(e){return null}}
   return null;
 }
 async function llm(signal){
@@ -158,9 +162,9 @@ async function llm(signal){
 async function ask(q){
   setState('think',q);hist.push({role:'user',content:q});
   const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),CONFIG.TIMEOUT);
-  try{reply((await route(q))||(await llm(ctl.signal)).replace(/[*_#`]/g,''))}
+  try{const r=await route(q);if(r&&r.url)replyLink(r);else reply(r||(await llm(ctl.signal)).replace(/[*_#`]/g,''))}
   catch(e){hist.pop();fail(e.name==='AbortError'?'Délai dépassé : le service ne répond pas.':'Je n’arrive pas à joindre le service de réponse ('+e.message+').')}
-  finally{clearTimeout(to)}
+  finally{clearTimeout(to);quiet=false}
 }
 
 /* ---------- Réponse + voix (Amélie si installée) ---------- */
@@ -176,20 +180,20 @@ const au=new Audio();au.playsInline=true;
 const SIL='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
 const unlockAudio=()=>{try{au.src=SIL;au.play().catch(()=>{})}catch(e){}};
 function sysSpeak(a){
-  if(!('speechSynthesis' in window)){setTimeout(()=>{if(state==='speak')setState('idle')},a.length*50);return}
+  if(!('speechSynthesis' in window)){setTimeout(done,a.length*50);return}
   speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(a);u.lang=CONFIG.LANG;if(voice)u.voice=voice;u.rate=.97;
-  u.onend=u.onerror=()=>{if(state==='speak')setState('idle')};speechSynthesis.speak(u);
+  u.onend=u.onerror=done;speechSynthesis.speak(u);
 }
 async function elSpeak(a){
   const r=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+(ELV[LSg('xen_elv')]||ELV.sarah)+'?output_format=mp3_44100_64',{method:'POST',
     headers:{'xi-api-key':LSg('xen_el'),'Content-Type':'application/json',Accept:'audio/mpeg'},
     body:JSON.stringify({text:a.slice(0,600),model_id:'eleven_flash_v2_5',voice_settings:{stability:.45,similarity_boost:.8}})});
   if(!r.ok)throw new Error('HTTP '+r.status);
-  au.src=URL.createObjectURL(await r.blob());au.onended=au.onerror=()=>{if(state==='speak')setState('idle')};await au.play();
+  au.src=URL.createObjectURL(await r.blob());au.onended=au.onerror=done;await au.play();
 }
 function reply(a){
   hist.push({role:'assistant',content:a});try{localStorage.setItem('xen_h',JSON.stringify(hist.slice(-20)))}catch(e){}
-  setState('speak');type(a);au.pause();
+  quiet=false;setState('speak');type(a);au.pause();
   if(LSg('xen_el'))elSpeak(a).catch(e=>{stEl.textContent='Voix naturelle indisponible ('+e.message+')';sysSpeak(a)});else sysSpeak(a);
 }
 function voiceCmd(v){
@@ -229,6 +233,40 @@ async function look(file){
   finally{clearTimeout(to)}
 }
 
+/* ---------- Actions : apps, recherches, raccourcis, mains libres ---------- */
+let handsFree=LSg('xen_hf')==='1',silences=0;document.body.dataset.hf=handsFree?'1':'';
+function done(){if(state==='speak')setState('idle');if(handsFree)setTimeout(()=>{if(state==='idle')startListen()},700)}
+function toggleHF(on){handsFree=on===undefined?!handsFree:on;LSs('xen_hf',handsFree?'1':'');document.body.dataset.hf=handsFree?'1':'';silences=0}
+const nz=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const enc=encodeURIComponent,cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const APPS={youtube:['youtube://','YouTube'],spotify:['spotify://','Spotify'],whatsapp:['whatsapp://','WhatsApp'],instagram:['instagram://','Instagram'],facebook:['fb://','Facebook'],messenger:['fb-messenger://','Messenger'],tiktok:['snssdk1233://','TikTok'],snapchat:['snapchat://','Snapchat'],telegram:['tg://','Telegram'],netflix:['nflx://','Netflix'],waze:['waze://','Waze'],uber:['uber://','Uber'],gmail:['googlegmail://','Gmail'],chrome:['googlechrome://','Chrome'],'google maps':['comgooglemaps://','Google Maps'],plans:['maps://','Plans'],maps:['maps://','Plans'],musique:['music://','Musique'],'apple music':['music://','Musique'],messages:['sms:','Messages'],telephone:['tel:','Téléphone'],facetime:['facetime:','FaceTime'],mail:['message://','Mail'],calendrier:['calshow://','Calendrier'],rappels:['x-apple-reminderkit://','Rappels'],notes:['mobilenotes://','Notes'],photos:['photos-redirect://','Photos'],'app store':['itms-apps://','App Store'],raccourcis:['shortcuts://','Raccourcis'],twitter:['twitter://','X'],x:['twitter://','X']};
+const SITES={youtube:Q=>'https://www.youtube.com/results?search_query='+Q,google:Q=>'https://www.google.com/search?q='+Q,amazon:Q=>'https://www.amazon.fr/s?k='+Q,wikipedia:Q=>'https://fr.wikipedia.org/w/index.php?search='+Q,leboncoin:Q=>'https://www.leboncoin.fr/recherche?text='+Q,plans:Q=>'maps://?q='+Q,maps:Q=>'maps://?q='+Q,spotify:Q=>'spotify:search:'+Q,'apple music':Q=>'music://music.apple.com/fr/search?term='+Q,netflix:Q=>'https://www.netflix.com/search?q='+Q,reddit:Q=>'https://www.reddit.com/search/?q='+Q,ebay:Q=>'https://www.ebay.fr/sch/i.html?_nkw='+Q,pinterest:Q=>'https://www.pinterest.fr/search/pins/?q='+Q};
+const shortcut=(name,text,say)=>({say,url:'shortcuts://run-shortcut?name='+enc(name)+(text?'&input=text&text='+enc(text):'')});
+function actions(q){
+  const n=nz(q).replace(/[?!,]+/g,'').replace(/\.+$/,'').trim();let m;
+  if(/mains libres|conversation continue/.test(n)){const on=!/(desactiv|arret|coupe|stop|off|enleve)/.test(n);toggleHF(on);return on?'Mode mains libres activé. Je t’écoute après chaque réponse.':'Mode mains libres désactivé.'}
+  if(m=n.match(/minuteur.*?(\d+)\s*(heure|h\b|minute|min\b|seconde|sec\b|s\b)/)){const v=+m[1],u=m[2].charAt(0),mins=u==='h'?v*60:u==='s'?v/60:v,lab=(u==='h'?'heure':u==='s'?'seconde':'minute')+(v>1?'s':'');return shortcut('Minuteur',String(mins),'Je lance ton minuteur de '+v+' '+lab+'.')}
+  if(m=q.match(/rappelle[-\s]moi\s+(?:de\s+|d['’]\s*)?(.+)/i))return shortcut('Rappel',m[1].trim(),'C’est noté : '+m[1].trim()+'.');
+  if(m=q.match(/(?:lance|exécute|execute|démarre|demarre)\s+le\s+raccourci\s+(.+)/i))return shortcut(m[1].trim(),'','Je lance le raccourci '+m[1].trim()+'.');
+  if(m=n.match(/(?:itineraire|emmene[- ]moi|navigue)(?: pour| vers| a| au| a la)?\s+(.+)/))return{say:'J’ouvre l’itinéraire vers '+m[1]+'.',url:'maps://?daddr='+enc(m[1])+'&dirflg=d'};
+  if(m=n.match(/(?:cherche|recherche|trouve(?:-moi)?)\s+(.+?)\s+sur\s+(youtube|google|amazon|wikipedia|leboncoin|plans|maps|spotify|apple music|netflix|reddit|ebay|pinterest)\b/))return{say:'Je cherche '+m[1]+' sur '+cap(m[2])+'.',url:SITES[m[2]](enc(m[1]))};
+  if(m=n.match(/^(?:cherche|recherche)\s+(.+)/))return{say:'Je cherche '+m[1]+' sur Google.',url:SITES.google(enc(m[1]))};
+  if(m=n.match(/^(ouvre|ouvrir|lance|lancer|demarre|va sur|affiche)\s+(?:l'app(?:lication)?\s+|l’app(?:lication)?\s+|app\s+)?(.+)$/)){
+    const name=m[2].trim().replace(/^(?:le |la |les |l['’]|mon |ma |mes |l'application |application )/,''),k=Object.keys(APPS).find(k=>nz(k)===name);
+    if(k)return{say:'J’ouvre '+APPS[k][1]+'.',url:APPS[k][0]};
+    if(/^[\w-]+(\.[\w-]{2,})+(\/\S*)?$/.test(name))return{say:'J’ouvre '+name+'.',url:'https://'+name};
+    if(/^ouvr/.test(m[1]))return'Je ne connais pas cette application. Crée un raccourci « Ouvrir '+name+' » dans l’app Raccourcis, puis dis : lance le raccourci Ouvrir '+name+'.';
+  }
+  return null;
+}
+function replyLink(r){
+  quiet=false;hist.push({role:'assistant',content:r.say});try{localStorage.setItem('xen_h',JSON.stringify(hist.slice(-20)))}catch(e){}
+  setState('speak');au.pause();clearInterval(ty);txEl.textContent='';txEl.append(r.say+' ');
+  const a=document.createElement('a');a.href=r.url;a.textContent='Ouvrir ›';a.style.cssText='color:#8fb4ff;text-decoration:none';txEl.appendChild(a);
+  if(LSg('xen_el'))elSpeak(r.say).catch(()=>sysSpeak(r.say));else sysSpeak(r.say);
+  setTimeout(()=>{try{location.href=r.url}catch(e){}},1400);
+}
+
 /* ---------- Interactions : tout passe par la sphère ---------- */
 function tap(){
   au.pause();unlockAudio();
@@ -237,7 +275,10 @@ function tap(){
   if(state==='think')return;
   clearTimeout(et);startListen();
 }
-cv.addEventListener('click',tap);$('mic').addEventListener('click',tap);
+cv.addEventListener('click',tap);let lp=false,lpT;const mic=$('mic');
+mic.addEventListener('click',()=>{if(lp){lp=false;return}tap()});
+mic.addEventListener('pointerdown',()=>{lp=false;lpT=setTimeout(()=>{lp=true;toggleHF();txEl.textContent=handsFree?'Mains libres activé.':'Mains libres désactivé.';if(handsFree&&state==='idle')startListen()},650)});
+['pointerup','pointerleave','pointercancel'].forEach(ev=>mic.addEventListener(ev,()=>clearTimeout(lpT)));
 cv.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tap()}});
 const sendBtn=$('send'),bar=document.querySelector('.bar');
 function submit(){const v=inEl.value.trim();if(!v||state==='think')return;if(/^\/voix(\s|$)/i.test(v)){voiceCmd(v);return}inEl.value='';sendBtn.classList.remove('on');inEl.blur();if(state==='listen')stopListen();ask(v)}
@@ -265,22 +306,27 @@ void main(){
   float d=length(p);
   if(d>1.42){gl_FragColor=vec4(0.0,0.0,0.0,1.0);return;}
   float a=atan(p.y,p.x);
-  p*=1.0+(0.008+L*0.025)*sin(3.0*a+T*1.7)*smoothstep(0.7,1.0,d);
+  p*=1.0+(0.012+L*0.03)*sin(3.0*a+T*2.4)*smoothstep(0.7,1.0,d);
   d=length(p);
   float wi=1.0-smoothstep(0.80,0.97,d);
-  float ph=0.45*sin(T*0.21)+0.25*sin(T*0.37+1.3)+L*0.12*sin(T*2.0);
-  float an=ph+0.55*sin(T*0.17+0.6)*(1.0-min(d,1.0));
+  float ph=0.6*sin(T*0.21)+0.35*sin(T*0.37+1.3)+0.2*sin(T*0.61+0.4)+L*0.15*sin(T*2.0);
+  float mf=0.5+0.5*sin(T*0.37+0.8*sin(T*0.13));float dm=smoothstep(0.55,0.97,mf);
+  float an=(ph+0.5*sin(T*0.17+0.6)*(1.0-min(d,1.0))+dm*(1.5*(1.0-min(d,1.0))+0.8*sin(d*5.0-T*0.8)))*wi;
   float cs=cos(an);float sn=sin(an);
   vec2 q=vec2(cs*p.x-sn*p.y,sn*p.x+cs*p.y);
-  float am=0.04+L*0.05;
-  q+=vec2(sin(q.y*2.4+T*0.23)+sin(q.x*1.8-T*0.17),sin(q.x*2.6-T*0.19)+sin(q.y*1.6+T*0.21))*am+vec2(sin(q.y*5.0-T*0.4),sin(q.x*5.2+T*0.35))*0.010;
-  q*=1.0+0.04*sin(T*0.4)+0.015*sin(d*9.0-T*0.9);
-  vec2 s=mix(p,q,wi);
+  float am=(0.06+L*0.06)*wi;
+  q+=vec2(sin(q.y*2.4+T*0.46)+sin(q.x*1.8-T*0.34),sin(q.x*2.6-T*0.38)+sin(q.y*1.6+T*0.42))*am+vec2(sin(q.y*5.0-T*0.8+q.x*2.0),sin(q.x*5.2+T*0.7-q.y*2.0))*0.016*wi;
+  q+=dm*0.24*wi*vec2(sin(q.y*3.0+T*0.8),sin(q.x*3.2-T*0.7));
+  q*=1.0+(0.05*sin(T*0.5)+0.02*sin(d*9.0-T*1.5)+dm*0.07*sin(d*6.0-T*1.2))*wi;
+  vec2 s=q;
+  float sl=length(s);
+  if(wi>0.001&&sl>0.96){s*=0.96/sl;}
   vec3 col=texture2D(S,vec2(0.5+s.x/2.842,0.5-s.y/2.842)).rgb;
-  vec2 g1=0.55*vec2(sin(T*0.31),cos(T*0.23));vec2 g2=0.6*vec2(cos(T*0.19+1.0),sin(T*0.27+2.0));
-  col+=wi*(vec3(0.55,0.3,1.0)*exp(-dot(p-g1,p-g1)*7.0)*0.16+vec3(0.2,0.7,1.0)*exp(-dot(p-g2,p-g2)*8.0)*0.14);
+  vec2 g1=0.55*vec2(sin(T*0.5),cos(T*0.37));vec2 g2=0.6*vec2(cos(T*0.3+1.0),sin(T*0.43+2.0));vec2 g3=0.5*vec2(sin(T*0.23+3.0),cos(T*0.57+1.0));
+  float rg=fract(T*0.13);float rw=(d-rg)*9.0;
+  col+=wi*(vec3(0.55,0.3,1.0)*exp(-dot(p-g1,p-g1)*7.0)*0.26+vec3(0.2,0.7,1.0)*exp(-dot(p-g2,p-g2)*8.0)*0.22+vec3(1.0,0.5,0.85)*exp(-dot(p-g3,p-g3)*10.0)*0.16+vec3(0.35,0.65,1.0)*exp(-rw*rw)*(1.0-rg)*0.22);
   float o=smoothstep(0.95,1.08,d);
-  col*=1.0+o*(0.10*sin(T*1.1)+L*0.9);
+  col*=1.0+o*(0.16*sin(T*1.3)+L*0.9);
   float fr=smoothstep(0.80,1.0,d)*(1.0-smoothstep(1.0,1.06,d));
   col+=vec3(0.25,0.45,1.0)*fr*pow(max(cos(a-T*0.6),0.0),6.0)*(0.25+L*0.8);
   col+=vec3(0.9,0.4,1.0)*fr*pow(max(cos(a+2.4+T*0.35),0.0),10.0)*0.15;
@@ -314,7 +360,7 @@ function resize(){W=innerWidth;H=innerHeight;cv.width=Math.round(W*D);cv.height=
 addEventListener('resize',resize);addEventListener('orientationchange',resize);resize();
 function frame(ms){
   const dt=Math.min((ms-last)/1000||.016,.05);last=ms;
-  ph+=dt*(reduce?.25:state==='think'?1.3:state==='listen'?1.1:state==='speak'?1.4:.7);
+  ph+=dt*(reduce?.3:state==='think'?(quiet?0.8:1.8):state==='listen'?1.5:state==='speak'?1.9:1.2);
   const tg=state==='listen'?.12+level()*.8:state==='speak'?.35+.25*Math.sin(ph*5)*Math.sin(ph*1.7):state==='think'?.18+.1*Math.sin(ph*2):state==='error'?.12:.06+.04*Math.sin(ph);
   lv+=(tg-lv)*.16;
   if(glOK){
