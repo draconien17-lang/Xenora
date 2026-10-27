@@ -47,7 +47,7 @@ body[data-s=listen] #mic{box-shadow:0 0 30px rgba(120,120,255,.9);transform:scal
 <script>
 'use strict';
 /* ===== CONFIG : par défaut, services gratuits sans clé. ENDPOINT (optionnel) = ton propre backend, voir worker.js. ===== */
-const CONFIG={ENDPOINT:'',FREE_LLM:'https://text.pollinations.ai',TIMEOUT:25000,LANG:'fr-FR'};
+const CONFIG={ENDPOINT:'',FREE_LLM:'https://text.pollinations.ai',TIMEOUT:15000,LANG:'fr-FR'};
 
 const $=id=>document.getElementById(id);
 const cv=$('orb'),stEl=$('state'),txEl=$('text'),inEl=$('q');
@@ -142,14 +142,14 @@ async function route(q){
   return null;
 }
 let GM=null,lastGroqErr='';
-async function groqModels(k){
+async function groqModels(k,signal){
   if(GM)return GM;
-  const r=await fetch('https://api.groq.com/openai/v1/models',{headers:{Authorization:'Bearer '+k}});
+  const r=await fetch('https://api.groq.com/openai/v1/models',{headers:{Authorization:'Bearer '+k},signal});
   if(!r.ok){const e=new Error('HTTP '+r.status);e.status=r.status;throw e}
   const ids=((await r.json()).data||[]).map(m=>m.id),pick=(...res)=>{for(const re of res){const f=ids.find(i=>re.test(i));if(f)return f}return null};
   GM={chat:pick(/llama-3\.3-70b-versatile/,/70b/,/llama-3\.1-8b-instant/,/llama/)||ids[0],vision:pick(/llama-4-scout/,/llama-4-maverick/,/scout/,/maverick/,/vision/)};return GM}
 async function groq(messages,signal,k,vision){
-  const m=await groqModels(k),model=vision?m.vision:m.chat;if(!model)throw new Error('aucun modèle'+(vision?' vision':''));
+  const m=await groqModels(k,signal),model=vision?m.vision:m.chat;if(!model)throw new Error('aucun modèle'+(vision?' vision':''));
   const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+k},signal,body:JSON.stringify({model,messages,max_tokens:500,temperature:.7})});
   if(!r.ok){const e=new Error('HTTP '+r.status+' '+((await r.text().catch(()=>''))+'').replace(/\s+/g,' ').slice(0,100));e.status=r.status;throw e}
   const d=await r.json(),a=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content;if(!a)throw new Error('réponse vide');return a.trim()}
@@ -165,7 +165,7 @@ function keyCmd(v){
 async function llm(signal){
   const now=new Date().toLocaleString('fr-FR'),msgs=[{role:'system',content:SYS+' Date et heure : '+now+'.'}].concat(hist.slice(-12));
   const gk=LSg('xen_gq');
-  if(gk){try{const a=await groq(msgs,signal,gk);lastGroqErr='';return a}catch(e){if(e.name==='AbortError')throw e;lastGroqErr=e.message;if(e.status===401){LSs('xen_gq','');GM=null;throw new Error('clé Groq refusée, écris /cle puis une nouvelle clé')}}}
+  if(gk){try{const a=await groq(msgs,signal,gk);lastGroqErr='';return a}catch(e){if(e.name==='AbortError')throw e;lastGroqErr=e.message;if(e.status===401){LSs('xen_gq','');GM=null;throw new Error('clé Groq refusée, écris /cle puis une nouvelle clé')}throw e}}
   if(CONFIG.ENDPOINT){
     const r=await fetch(CONFIG.ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},signal,
       body:JSON.stringify({message:hist[hist.length-1].content,history:hist.slice(-9,-1),now,tz:Intl.DateTimeFormat().resolvedOptions().timeZone})});
@@ -186,7 +186,7 @@ async function ask(q){
   setState('think',q);hist.push({role:'user',content:q});
   const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),CONFIG.TIMEOUT);
   try{const r=await route(q);if(r&&r.url)replyLink(r);else reply(r||(await llm(ctl.signal)).replace(/[*_#`]/g,''))}
-  catch(e){hist.pop();fail(e.name==='AbortError'?'Délai dépassé : le service ne répond pas.':'Je n’arrive pas à joindre le service de réponse ('+e.message+').'+(lastGroqErr?' Groq : '+lastGroqErr+'.':'')+(LSg('xen_gq')?'':' Pour une connexion fiable, écris /cle suivi d’une clé Groq gratuite (console.groq.com).'))}
+  catch(e){hist.pop();fail(e.name==='AbortError'?(LSg('xen_gq')?'Délai dépassé : Groq ne répond pas. Vérifie ta connexion, un VPN ou un bloqueur de contenu.':'Délai dépassé : le service ne répond pas.'):(LSg('xen_gq')&&lastGroqErr?'Groq : '+lastGroqErr+'.':'Je n’arrive pas à joindre le service de réponse ('+e.message+').')+(LSg('xen_gq')?'':' Pour une connexion fiable, écris /cle suivi d’une clé Groq gratuite (console.groq.com).'))}
   finally{clearTimeout(to);quiet=false}
 }
 
