@@ -41,7 +41,7 @@ body[data-s=listen] #mic{box-shadow:0 0 30px rgba(120,120,255,.9);transform:scal
 <div class="bar">
   <button id="cam" type="button" aria-label="Photo : appareil ou galerie"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
   <input id="file" type="file" accept="image/*" hidden>
-  <input id="q" type="text" enterkeyhint="send" autocomplete="off" placeholder="Écrire à Xenora…" aria-label="Écrire à Xenora">
+  <input id="q" type="text" enterkeyhint="send" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Écrire à Xenora…" aria-label="Écrire à Xenora">
   <button id="send" type="button" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
 </div>
 <script>
@@ -141,7 +141,7 @@ async function route(q){
   if(/^(qui (est|était)|c[’']est quoi|qu[’']est-ce (que|qu)|parle-moi d|explique-moi)/i.test(q)){quiet=true;stEl.textContent='Je cherche…';try{return await wiki(q)}catch(e){return null}}
   return null;
 }
-let GM=null;
+let GM=null,lastGroqErr='';
 async function groqModels(k){
   if(GM)return GM;
   const r=await fetch('https://api.groq.com/openai/v1/models',{headers:{Authorization:'Bearer '+k}});
@@ -154,16 +154,18 @@ async function groq(messages,signal,k,vision){
   if(!r.ok){const e=new Error('HTTP '+r.status+' '+((await r.text().catch(()=>''))+'').replace(/\s+/g,' ').slice(0,100));e.status=r.status;throw e}
   const d=await r.json(),a=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content;if(!a)throw new Error('réponse vide');return a.trim()}
 function keyCmd(v){
-  const arg=v.replace(/^\/cle\s*/i,'').trim();inEl.value='';sendBtn.classList.remove('on');inEl.blur();
+  let arg=v.replace(/^\/cle\s*/i,'').replace(/^bearer\s+/i,'').replace(/[\s"'“”‘’«»]/g,'');inEl.value='';sendBtn.classList.remove('on');inEl.blur();
+  if(/^gsk_/i.test(arg))arg='gsk_'+arg.slice(4);
   if(!arg){txEl.textContent=LSg('xen_gq')?'Clé Groq enregistrée. Écris /cle off pour la retirer.':'Écris /cle suivi de ta clé Groq (gratuite, sur console.groq.com) pour des réponses fiables.';return}
   if(arg.toLowerCase()==='off'){LSs('xen_gq','');GM=null;txEl.textContent='Clé retirée.';return}
+  if(!/^gsk_/.test(arg)){txEl.textContent='Une clé Groq commence par gsk_. J’ai reçu : « '+arg.slice(0,8)+'… » ('+arg.length+' caractères).';return}
   LSs('xen_gq',arg);GM=null;txEl.textContent='Clé enregistrée. Je teste la connexion…';setState('think');
-  groq([{role:'user',content:'Réponds uniquement : prête.'}],undefined,arg).then(()=>{setState('idle');txEl.textContent='Connexion réussie. Je suis prête.'}).catch(e=>{LSs('xen_gq','');setState('idle');txEl.textContent='Clé refusée ou service indisponible ('+e.message+').'});
+  groq([{role:'user',content:'Réponds uniquement : prête.'}],undefined,arg).then(()=>{setState('idle');txEl.textContent='Connexion réussie. Je suis prête.'}).catch(e=>{LSs('xen_gq','');setState('idle');txEl.textContent='Clé refusée ('+e.message+'). Reçue : '+arg.slice(0,8)+'…'+arg.slice(-3)+' ('+arg.length+' caractères, une vraie clé en fait environ 56).'});
 }
 async function llm(signal){
   const now=new Date().toLocaleString('fr-FR'),msgs=[{role:'system',content:SYS+' Date et heure : '+now+'.'}].concat(hist.slice(-12));
   const gk=LSg('xen_gq');
-  if(gk){try{return await groq(msgs,signal,gk)}catch(e){if(e.name==='AbortError')throw e;if(e.status===401){LSs('xen_gq','');GM=null;throw new Error('clé Groq refusée, écris /cle puis une nouvelle clé')}}}
+  if(gk){try{const a=await groq(msgs,signal,gk);lastGroqErr='';return a}catch(e){if(e.name==='AbortError')throw e;lastGroqErr=e.message;if(e.status===401){LSs('xen_gq','');GM=null;throw new Error('clé Groq refusée, écris /cle puis une nouvelle clé')}}}
   if(CONFIG.ENDPOINT){
     const r=await fetch(CONFIG.ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},signal,
       body:JSON.stringify({message:hist[hist.length-1].content,history:hist.slice(-9,-1),now,tz:Intl.DateTimeFormat().resolvedOptions().timeZone})});
@@ -184,7 +186,7 @@ async function ask(q){
   setState('think',q);hist.push({role:'user',content:q});
   const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),CONFIG.TIMEOUT);
   try{const r=await route(q);if(r&&r.url)replyLink(r);else reply(r||(await llm(ctl.signal)).replace(/[*_#`]/g,''))}
-  catch(e){hist.pop();fail(e.name==='AbortError'?'Délai dépassé : le service ne répond pas.':'Je n’arrive pas à joindre le service de réponse ('+e.message+').'+(LSg('xen_gq')?'':' Pour une connexion fiable, écris /cle suivi d’une clé Groq gratuite (console.groq.com).'))}
+  catch(e){hist.pop();fail(e.name==='AbortError'?'Délai dépassé : le service ne répond pas.':'Je n’arrive pas à joindre le service de réponse ('+e.message+').'+(lastGroqErr?' Groq : '+lastGroqErr+'.':'')+(LSg('xen_gq')?'':' Pour une connexion fiable, écris /cle suivi d’une clé Groq gratuite (console.groq.com).'))}
   finally{clearTimeout(to);quiet=false}
 }
 
