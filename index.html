@@ -141,8 +141,29 @@ async function route(q){
   if(/^(qui (est|était)|c[’']est quoi|qu[’']est-ce (que|qu)|parle-moi d|explique-moi)/i.test(q)){quiet=true;stEl.textContent='Je cherche…';try{return await wiki(q)}catch(e){return null}}
   return null;
 }
+let GM=null;
+async function groqModels(k){
+  if(GM)return GM;
+  const r=await fetch('https://api.groq.com/openai/v1/models',{headers:{Authorization:'Bearer '+k}});
+  if(!r.ok){const e=new Error('HTTP '+r.status);e.status=r.status;throw e}
+  const ids=((await r.json()).data||[]).map(m=>m.id),pick=(...res)=>{for(const re of res){const f=ids.find(i=>re.test(i));if(f)return f}return null};
+  GM={chat:pick(/llama-3\.3-70b-versatile/,/70b/,/llama-3\.1-8b-instant/,/llama/)||ids[0],vision:pick(/llama-4-scout/,/llama-4-maverick/,/scout/,/maverick/,/vision/)};return GM}
+async function groq(messages,signal,k,vision){
+  const m=await groqModels(k),model=vision?m.vision:m.chat;if(!model)throw new Error('aucun modèle'+(vision?' vision':''));
+  const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+k},signal,body:JSON.stringify({model,messages,max_tokens:500,temperature:.7})});
+  if(!r.ok){const e=new Error('HTTP '+r.status+' '+((await r.text().catch(()=>''))+'').replace(/\s+/g,' ').slice(0,100));e.status=r.status;throw e}
+  const d=await r.json(),a=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content;if(!a)throw new Error('réponse vide');return a.trim()}
+function keyCmd(v){
+  const arg=v.replace(/^\/cle\s*/i,'').trim();inEl.value='';sendBtn.classList.remove('on');inEl.blur();
+  if(!arg){txEl.textContent=LSg('xen_gq')?'Clé Groq enregistrée. Écris /cle off pour la retirer.':'Écris /cle suivi de ta clé Groq (gratuite, sur console.groq.com) pour des réponses fiables.';return}
+  if(arg.toLowerCase()==='off'){LSs('xen_gq','');GM=null;txEl.textContent='Clé retirée.';return}
+  LSs('xen_gq',arg);GM=null;txEl.textContent='Clé enregistrée. Je teste la connexion…';setState('think');
+  groq([{role:'user',content:'Réponds uniquement : prête.'}],undefined,arg).then(()=>{setState('idle');txEl.textContent='Connexion réussie. Je suis prête.'}).catch(e=>{LSs('xen_gq','');setState('idle');txEl.textContent='Clé refusée ou service indisponible ('+e.message+').'});
+}
 async function llm(signal){
   const now=new Date().toLocaleString('fr-FR'),msgs=[{role:'system',content:SYS+' Date et heure : '+now+'.'}].concat(hist.slice(-12));
+  const gk=LSg('xen_gq');
+  if(gk){try{return await groq(msgs,signal,gk)}catch(e){if(e.name==='AbortError')throw e;if(e.status===401){LSs('xen_gq','');GM=null;throw new Error('clé Groq refusée, écris /cle puis une nouvelle clé')}}}
   if(CONFIG.ENDPOINT){
     const r=await fetch(CONFIG.ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},signal,
       body:JSON.stringify({message:hist[hist.length-1].content,history:hist.slice(-9,-1),now,tz:Intl.DateTimeFormat().resolvedOptions().timeZone})});
@@ -163,7 +184,7 @@ async function ask(q){
   setState('think',q);hist.push({role:'user',content:q});
   const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),CONFIG.TIMEOUT);
   try{const r=await route(q);if(r&&r.url)replyLink(r);else reply(r||(await llm(ctl.signal)).replace(/[*_#`]/g,''))}
-  catch(e){hist.pop();fail(e.name==='AbortError'?'Délai dépassé : le service ne répond pas.':'Je n’arrive pas à joindre le service de réponse ('+e.message+').')}
+  catch(e){hist.pop();fail(e.name==='AbortError'?'Délai dépassé : le service ne répond pas.':'Je n’arrive pas à joindre le service de réponse ('+e.message+').'+(LSg('xen_gq')?'':' Pour une connexion fiable, écris /cle suivi d’une clé Groq gratuite (console.groq.com).'))}
   finally{clearTimeout(to);quiet=false}
 }
 
@@ -218,6 +239,8 @@ async function look(file){
   const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),60000);
   const tries=[['openai',768],['openai-large',768],['openai',512]];let err='';
   try{
+    const gk=LSg('xen_gq');
+    if(gk){try{const url=await shrink(file,800);const a=await groq([{role:'user',content:[{type:'text',text:'Tu es Xenora, une assistante vocale. Réponds en français, en 3 à 5 phrases, sans markdown ni emoji. '+ask1},{type:'image_url',image_url:{url}}]}],ctl.signal,gk,true);hist.push({role:'user',content:'[Photo] '+ask1});reply(a.replace(/[*_#`]/g,''));return}catch(e){if(e.name==='AbortError')throw e;err='Groq : '+e.message+' | '}}
     for(const t of tries){
       const url=await shrink(file,t[1]);
       const r=await fetch(CONFIG.FREE_LLM+'/openai',{method:'POST',headers:{'Content-Type':'application/json'},signal:ctl.signal,
@@ -226,7 +249,7 @@ async function look(file){
         const d=await r.json(),a=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||'').replace(/[*_#`]/g,'').trim();
         if(a){hist.push({role:'user',content:'[Photo] '+ask1});reply(a);return}
         err='réponse vide';continue}
-      err='HTTP '+r.status+' '+((await r.text().catch(()=>''))+'').replace(/\s+/g,' ').slice(0,140);
+      err+='HTTP '+r.status+' '+((await r.text().catch(()=>''))+'').replace(/\s+/g,' ').slice(0,140);
     }
     throw new Error(err);
   }catch(e){fail(e.name==='AbortError'?'Délai dépassé pour l’analyse de la photo.':'Analyse de la photo impossible ('+e.message+').')}
@@ -281,7 +304,7 @@ mic.addEventListener('pointerdown',()=>{lp=false;lpT=setTimeout(()=>{lp=true;tog
 ['pointerup','pointerleave','pointercancel'].forEach(ev=>mic.addEventListener(ev,()=>clearTimeout(lpT)));
 cv.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tap()}});
 const sendBtn=$('send'),bar=document.querySelector('.bar');
-function submit(){const v=inEl.value.trim();if(!v||state==='think')return;if(/^\/voix(\s|$)/i.test(v)){voiceCmd(v);return}inEl.value='';sendBtn.classList.remove('on');inEl.blur();if(state==='listen')stopListen();ask(v)}
+function submit(){const v=inEl.value.trim();if(!v||state==='think')return;if(/^\/voix(\s|$)/i.test(v)){voiceCmd(v);return}if(/^\/cle(\s|$)/i.test(v)){keyCmd(v);return}inEl.value='';sendBtn.classList.remove('on');inEl.blur();if(state==='listen')stopListen();ask(v)}
 inEl.addEventListener('keydown',e=>{if(e.key==='Enter')submit()});
 inEl.addEventListener('input',()=>sendBtn.classList.toggle('on',!!inEl.value.trim()));
 sendBtn.addEventListener('click',submit);
