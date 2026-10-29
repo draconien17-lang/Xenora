@@ -107,7 +107,7 @@ function stopListen(){if(rec){const r=rec;rec=null;r.onend=null;try{r.abort()}ca
 
 /* ---------- Réponses : services gratuits sans clé, appelés depuis l’iPhone ---------- */
 const SYS='Tu es Xenora, une IA vocale futuriste à la voix de femme, chaleureuse, curieuse et intelligente. Tu réfléchis, tu donnes ton avis, tu relances si utile. Réponds en français en 3 à 5 phrases claires et précises, sans markdown ni emoji, faites pour être lues à voix haute. Si on te demande de développer ou de détailler, réponds plus longuement (6 à 10 phrases). La météo, la date, l’heure et Wikipédia sont gérés par l’application ; si tu ne sais pas quelque chose, dis-le franchement sans inventer.';
-try{hist=JSON.parse(localStorage.getItem('xen_h')||'[]')}catch(e){}
+try{hist=JSON.parse(localStorage.getItem('xen_h')||'[]').map(m=>({role:m.role,content:String(m.content).slice(0,700)}))}catch(e){}
 const WMO={0:'ciel dégagé',1:'plutôt dégagé',2:'partiellement nuageux',3:'couvert',45:'brouillard',48:'brouillard givrant',51:'bruine légère',53:'bruine',55:'bruine forte',61:'pluie faible',63:'pluie',65:'forte pluie',71:'neige faible',73:'neige',75:'forte neige',80:'averses',81:'averses',82:'fortes averses',95:'orage',96:'orage avec grêle',99:'orage avec grêle'};
 const J=async u=>{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()};
 const pos=()=>new Promise((ok,ko)=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>ok(p.coords),()=>ko(new Error('position refusée')),{timeout:8000,maximumAge:600000}):ko(new Error('position indisponible')));
@@ -141,18 +141,21 @@ async function route(q){
   if(/^(qui (est|était)|c[’']est quoi|qu[’']est-ce (que|qu)|parle-moi d|explique-moi)/i.test(q)){quiet=true;stEl.textContent='Je cherche…';try{return await wiki(q)}catch(e){return null}}
   return null;
 }
+function trimHist(){const a=hist.slice(-12).map(m=>({role:m.role,content:String(m.content).slice(0,700)})),out=[];let t=0;for(let i=a.length-1;i>=0;i--){t+=a[i].content.length;if(t>3500&&out.length)break;out.unshift(a[i])}return out}
 let GM=null,lastGroqErr='';
 async function groqModels(k,signal){
   if(GM)return GM;
   const r=await fetch('https://api.groq.com/openai/v1/models',{headers:{Authorization:'Bearer '+k},signal});
   if(!r.ok){const e=new Error('HTTP '+r.status);e.status=r.status;throw e}
-  const ids=((await r.json()).data||[]).map(m=>m.id),pick=(...res)=>{for(const re of res){const f=ids.find(i=>re.test(i));if(f)return f}return null};
-  GM={chat:pick(/llama-3\.3-70b-versatile/,/70b/,/llama-3\.1-8b-instant/,/llama/)||ids[0],vision:pick(/llama-4-scout/,/llama-4-maverick/,/scout/,/maverick/,/vision/)};return GM}
+  const bad=/guard|whisper|tts|orpheus|playai|embed|safeguard|moderation|transcri/i;
+  const ids=((await r.json()).data||[]).filter(m=>m.active!==false&&!bad.test(m.id)&&(m.context_window||8192)>=8000).map(m=>m.id);
+  const pick=(...res)=>{for(const re of res){const f=ids.find(i=>re.test(i));if(f)return f}return null};
+  GM={chat:pick(/llama-3\.3-70b-versatile/,/llama-3\.1-8b-instant/,/llama-4-maverick/,/llama-4-scout/,/llama.*70b/,/llama/,/gemma|kimi|mistral|qwen/)||ids[0],vision:pick(/llama-4-scout/,/llama-4-maverick/,/scout|maverick|vision/)};return GM}
 async function groq(messages,signal,k,vision){
   const m=await groqModels(k,signal),model=vision?m.vision:m.chat;if(!model)throw new Error('aucun modèle'+(vision?' vision':''));
   const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+k},signal,body:JSON.stringify({model,messages,max_tokens:500,temperature:.7})});
-  if(!r.ok){const e=new Error('HTTP '+r.status+' '+((await r.text().catch(()=>''))+'').replace(/\s+/g,' ').slice(0,100));e.status=r.status;throw e}
-  const d=await r.json(),a=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content;if(!a)throw new Error('réponse vide');return a.trim()}
+  if(!r.ok){const e=new Error('HTTP '+r.status+' ['+model+'] '+((await r.text().catch(()=>''))+'').replace(/\s+/g,' ').slice(0,100));e.status=r.status;throw e}
+  const d=await r.json(),a=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content;if(!a)throw new Error('réponse vide');return a.replace(/<think>[\s\S]*?<\/think>/g,'').trim()}
 function keyCmd(v){
   let arg=v.replace(/^\/cle\s*/i,'').replace(/^bearer\s+/i,'').replace(/[\s"'“”‘’«»]/g,'');inEl.value='';sendBtn.classList.remove('on');inEl.blur();
   if(/^gsk_/i.test(arg))arg='gsk_'+arg.slice(4);
@@ -160,12 +163,12 @@ function keyCmd(v){
   if(arg.toLowerCase()==='off'){LSs('xen_gq','');GM=null;txEl.textContent='Clé retirée.';return}
   if(!/^gsk_/.test(arg)){txEl.textContent='Une clé Groq commence par gsk_. J’ai reçu : « '+arg.slice(0,8)+'… » ('+arg.length+' caractères).';return}
   LSs('xen_gq',arg);GM=null;txEl.textContent='Clé enregistrée. Je teste la connexion…';setState('think');
-  groq([{role:'user',content:'Réponds uniquement : prête.'}],undefined,arg).then(()=>{setState('idle');txEl.textContent='Connexion réussie. Je suis prête.'}).catch(e=>{LSs('xen_gq','');setState('idle');txEl.textContent='Clé refusée ('+e.message+'). Reçue : '+arg.slice(0,8)+'…'+arg.slice(-3)+' ('+arg.length+' caractères, une vraie clé en fait environ 56).'});
+  groq([{role:'user',content:'Réponds uniquement : prête.'}],undefined,arg).then(()=>{setState('idle');txEl.textContent='Connexion réussie ('+(GM&&GM.chat)+'). Je suis prête.'}).catch(e=>{LSs('xen_gq','');setState('idle');txEl.textContent='Clé refusée ('+e.message+'). Reçue : '+arg.slice(0,8)+'…'+arg.slice(-3)+' ('+arg.length+' caractères, une vraie clé en fait environ 56).'});
 }
 async function llm(signal){
-  const now=new Date().toLocaleString('fr-FR'),msgs=[{role:'system',content:SYS+' Date et heure : '+now+'.'}].concat(hist.slice(-12));
+  const now=new Date().toLocaleString('fr-FR'),msgs=[{role:'system',content:SYS+' Date et heure : '+now+'.'}].concat(trimHist());
   const gk=LSg('xen_gq');
-  if(gk){try{const a=await groq(msgs,signal,gk);lastGroqErr='';return a}catch(e){if(e.name==='AbortError')throw e;lastGroqErr=e.message;if(e.status===401){LSs('xen_gq','');GM=null;throw new Error('clé Groq refusée, écris /cle puis une nouvelle clé')}throw e}}
+  if(gk){try{const a=await groq(msgs,signal,gk);lastGroqErr='';return a}catch(e){if(e.name==='AbortError')throw e;lastGroqErr=e.message;if(/reduce the length|context_length|too long/i.test(e.message)){hist=hist.slice(-1);LSs('xen_h','');try{const a2=await groq([msgs[0],msgs[msgs.length-1]],signal,gk);lastGroqErr='';return a2}catch(e2){lastGroqErr=e2.message;throw e2}}if(e.status===401){LSs('xen_gq','');GM=null;throw new Error('clé Groq refusée, écris /cle puis une nouvelle clé')}throw e}}
   if(CONFIG.ENDPOINT){
     const r=await fetch(CONFIG.ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},signal,
       body:JSON.stringify({message:hist[hist.length-1].content,history:hist.slice(-9,-1),now,tz:Intl.DateTimeFormat().resolvedOptions().timeZone})});
@@ -270,6 +273,7 @@ const shortcut=(name,text,say)=>({say,url:'shortcuts://run-shortcut?name='+enc(n
 function actions(q){
   const n=nz(q).replace(/[?!,]+/g,'').replace(/\.+$/,'').trim();let m;
   if(/mains libres|conversation continue/.test(n)){const on=!/(desactiv|arret|coupe|stop|off|enleve)/.test(n);toggleHF(on);return on?'Mode mains libres activé. Je t’écoute après chaque réponse.':'Mode mains libres désactivé.'}
+  if(/oublie tout|efface (?:la |ta )?memoire|reinitialise/.test(n)){hist=[];LSs('xen_h','');return'C’est fait, j’ai tout oublié.'}
   if(m=n.match(/minuteur.*?(\d+)\s*(heure|h\b|minute|min\b|seconde|sec\b|s\b)/)){const v=+m[1],u=m[2].charAt(0),mins=u==='h'?v*60:u==='s'?v/60:v,lab=(u==='h'?'heure':u==='s'?'seconde':'minute')+(v>1?'s':'');return shortcut('Minuteur',String(mins),'Je lance ton minuteur de '+v+' '+lab+'.')}
   if(m=q.match(/rappelle[-\s]moi\s+(?:de\s+|d['’]\s*)?(.+)/i))return shortcut('Rappel',m[1].trim(),'C’est noté : '+m[1].trim()+'.');
   if(m=q.match(/(?:lance|exécute|execute|démarre|demarre)\s+le\s+raccourci\s+(.+)/i))return shortcut(m[1].trim(),'','Je lance le raccourci '+m[1].trim()+'.');
